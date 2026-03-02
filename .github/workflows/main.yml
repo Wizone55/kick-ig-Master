@@ -1,0 +1,22 @@
+name: Monitor Kick e IG
+on:
+  schedule:
+    - cron: '*/20 * * * *' # Esto lo corre cada 20 minutos
+  workflow_dispatch: # Esto permite darle al botón "Play" manual
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Use Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+      - name: Install Dependencies
+        run: npm install
+      - name: Run Monitor
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: node monitor.js
