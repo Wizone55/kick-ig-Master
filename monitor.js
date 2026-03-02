@@ -14,37 +14,65 @@ async function sendTelegram(text) {
 }
 
 (async () => {
-    const kickChannels = ["roxanny", "maryblog", "pauchikita", "nanatty", "sachauzumaki", "airita_miau", "sylvee", "diealis", "pieroarenast", "aventurexa", "sideral", "alejus28"];
-    const igUsers = ["maryblog32", "mdjimenaa", "sylvee", "soyevapartis", "oiceleste", "lucero.carnero", "na_____c223", "abriguerra", "jessick"];
+    // 🛡️ SEGURIDAD: Espera aleatoria (1-30 seg) para no parecer un bot
+    const waitTime = Math.floor(Math.random() * 30000);
+    console.log(`Esperando ${waitTime/1000}s para seguridad...`);
+    await new Promise(r => setTimeout(r, waitTime));
+
+    // 🎯 LISTA DE PRÁCTICA ACTUALIZADA
+    const kickChannels = ["mikucatowo", "aventurexa", "reven"]; 
+    const igUsers = ["maryblog32", "soyevapartis"];
 
     const browser = await puppeteer.launch({ 
         headless: "new",
-        args: ['--no-sandbox', '--disable-setuid-sandbox'] 
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'] 
     });
+    
     const page = await browser.newPage();
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
 
-    console.log("Revisando Kick...");
+    // --- REVISANDO KICK ---
     for (const channel of kickChannels) {
         try {
-            await page.goto(`https://kick.com/${channel}`, { waitUntil: 'networkidle2', timeout: 25000 });
-            const content = await page.content();
-            const m3u8Match = content.match(/https?:\/\/[^"'\s]+\.m3u8[^"'\s]*/i);
-            if (m3u8Match) {
-                await sendTelegram(`🟢 **KICK: ${channel.toUpperCase()} EN VIVO**\n🔗 M3U8: \`${m3u8Match[0]}\``);
+            let m3u8Url = null;
+            // Interceptor de red para cazar el link real
+            await page.setRequestInterception(true);
+            page.on('request', request => {
+                const url = request.url();
+                if (url.includes('.m3u8') && (url.includes('master') || url.includes('playlist'))) {
+                    m3u8Url = url;
+                }
+                request.continue();
+            });
+
+            await page.goto(`https://kick.com/${channel}`, { waitUntil: 'networkidle2', timeout: 40000 });
+            await new Promise(r => setTimeout(r, 10000)); // 10 seg para que cargue el video
+
+            const isLive = await page.evaluate(() => {
+                const badge = document.querySelector('.bg-vibrant');
+                return badge && (badge.innerText.includes('LIVE') || badge.innerText.includes('EN VIVO'));
+            });
+
+            if (isLive && m3u8Url) {
+                const cleanLink = m3u8Url.replace(/\\/g, '');
+                await sendTelegram(`🟢 **KICK: ${channel.toUpperCase()} EN VIVO**\n🔗 M3U8: \`${cleanLink}\``);
             }
+            
+            await page.setRequestInterception(false);
+            page.removeAllListeners('request');
         } catch (e) { console.log(`Error Kick ${channel}`); }
     }
 
-    console.log("Revisando IG Stories...");
+    // --- REVISANDO IG STORIES (PICUKI) ---
     for (const user of igUsers) {
         try {
-            await page.goto(`https://imginn.com/${user}/`, { waitUntil: 'networkidle2', timeout: 25000 });
+            await page.goto(`https://www.picuki.com/profile/${user}`, { waitUntil: 'networkidle2', timeout: 30000 });
             const hasStories = await page.evaluate(() => {
-                return !!document.querySelector('.stories') || document.body.innerText.includes("Stories");
+                return !!document.querySelector('.profile-avatar.has-stories');
             });
+
             if (hasStories) {
-                await sendTelegram(`📸 **IG: @${user}** tiene historias nuevas!\n🔗 Ver: https://imginn.com/${user}/`);
+                await sendTelegram(`📸 **IG: @${user}** tiene historias!\n🔗 Ver: https://www.picuki.com/profile/${user}`);
             }
         } catch (e) { console.log(`Error IG ${user}`); }
     }
