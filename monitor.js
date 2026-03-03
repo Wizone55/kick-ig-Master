@@ -12,9 +12,9 @@ async function sendTelegram(text) {
 }
 
 (async () => {
-    const kickChannels = ["pauchikita", "roxanny", "sofipatatita"]; 
+    const kickChannels = ["sofipatatita", "pauchikita", "roxanny"]; 
     
-    // Si en 3 minutos no acaba, cerramos.
+    // Cerramos en 3 minutos para que no se quede amarillo infinito
     const globalTimeout = setTimeout(() => process.exit(0), 180000);
 
     const browser = await puppeteer.launch({ 
@@ -23,37 +23,33 @@ async function sendTelegram(text) {
     });
     
     const page = await browser.newPage();
-    
-    // Bloqueamos imágenes y CSS para ser ultra rápidos y evitar trackers
-    await page.setRequestInterception(true);
-    page.on('request', (req) => {
-        if(['image', 'stylesheet', 'font'].includes(req.resourceType())) req.abort();
-        else req.continue();
-    });
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
 
     for (const channel of kickChannels) {
         try {
-            console.log(`📡 Escaneando: ${channel}`);
+            console.log(`🔍 Buscando datos de: ${channel}`);
             
-            // Vamos directamente a la versión de "reproductor" que es más ligera
-            await page.goto(`https://kick.com/video/${channel}`, { 
-                waitUntil: 'domcontentloaded', 
-                timeout: 25000 
+            // Vamos a la pestaña de videos (VODs) que es menos protegida
+            await page.goto(`https://kick.com/${channel}/videos`, { 
+                waitUntil: 'networkidle2', 
+                timeout: 30000 
             });
 
-            await new Promise(r => setTimeout(r, 8000)); 
+            await new Promise(r => setTimeout(r, 10000)); 
 
             const data = await page.evaluate(() => {
                 const html = document.documentElement.innerHTML;
-                // Buscamos el link maestro que necesitas
-                const match = html.match(/https:\/\/stream\.kick\.com\/[^"']+\/master\.m3u8/i);
-                // Si el link existe en el código, es porque hay señal de stream
-                return match ? match[0] : null;
+                // Buscamos cualquier master.m3u8 presente en la página de videos
+                const matches = html.match(/https:\/\/stream\.kick\.com\/[^"']+\/master\.m3u8/gi);
+                return matches ? [...new Set(matches)] : null; // Eliminamos duplicados
             });
 
-            if (data) {
-                const cleanLink = data.replace(/\\/g, '');
-                await sendTelegram(`🎯 **¡CAZADO! ${channel.toUpperCase()}**\n\nLink Maestro:\n\`${cleanLink}\``);
+            if (data && data.length > 0) {
+                // Tomamos el primer link (el más reciente)
+                const cleanLink = data[0].replace(/\\/g, '');
+                await sendTelegram(`🎥 **VOD/LIVE DETECTADO: ${channel.toUpperCase()}**\n\nLink:\n\`${cleanLink}\``);
+            } else {
+                console.log(`No se encontraron links para ${channel}`);
             }
 
         } catch (e) { 
