@@ -1,4 +1,3 @@
-const puppeteer = require('puppeteer');
 const axios = require('axios');
 
 async function sendTelegram(text) {
@@ -11,52 +10,38 @@ async function sendTelegram(text) {
     } catch (e) { console.log("Error Telegram"); }
 }
 
-(async () => {
-    const kickChannels = ["sofipatatita", "pauchikita", "roxanny"]; 
-    
-    // Cerramos en 3 minutos para que no se quede amarillo infinito
-    const globalTimeout = setTimeout(() => process.exit(0), 180000);
+async function checkChannel(channel) {
+    try {
+        console.log(`📡 Consultando: ${channel}`);
+        // Simulamos una petición de una App de Android/iPhone
+        const response = await axios.get(`https://kick.com/api/v1/channels/${channel}`, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+                'Accept': 'application/json'
+            },
+            timeout: 10000
+        });
 
-    const browser = await puppeteer.launch({ 
-        headless: "new",
-        args: ['--no-sandbox', '--disable-setuid-sandbox'] 
-    });
-    
-    const page = await browser.newPage();
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
-
-    for (const channel of kickChannels) {
-        try {
-            console.log(`🔍 Buscando datos de: ${channel}`);
-            
-            // Vamos a la pestaña de videos (VODs) que es menos protegida
-            await page.goto(`https://kick.com/${channel}/videos`, { 
-                waitUntil: 'networkidle2', 
-                timeout: 30000 
-            });
-
-            await new Promise(r => setTimeout(r, 10000)); 
-
-            const data = await page.evaluate(() => {
-                const html = document.documentElement.innerHTML;
-                // Buscamos cualquier master.m3u8 presente en la página de videos
-                const matches = html.match(/https:\/\/stream\.kick\.com\/[^"']+\/master\.m3u8/gi);
-                return matches ? [...new Set(matches)] : null; // Eliminamos duplicados
-            });
-
-            if (data && data.length > 0) {
-                // Tomamos el primer link (el más reciente)
-                const cleanLink = data[0].replace(/\\/g, '');
-                await sendTelegram(`🎥 **VOD/LIVE DETECTADO: ${channel.toUpperCase()}**\n\nLink:\n\`${cleanLink}\``);
-            } else {
-                console.log(`No se encontraron links para ${channel}`);
-            }
-
-        } catch (e) { 
-            console.log(`⚠️ Error en ${channel}`); 
+        const data = response.data;
+        
+        // Si está en vivo, Kick suele devolver el objeto 'playback_url'
+        if (data.livestream && data.livestream.playback_url) {
+            const link = data.livestream.playback_url;
+            await sendTelegram(`🎯 **¡EN VIVO! ${channel.toUpperCase()}**\n\nLink:\n\`${link}\``);
+        } else {
+            console.log(`${channel} está offline.`);
         }
+    } catch (e) {
+        console.log(`❌ Error en ${channel}: Probablemente bloqueo de IP.`);
     }
+}
 
-    await browser.close();
+(async () => {
+    const channels = ["sofipatatita", "pauchikita", "roxanny"];
+    for (const channel of channels) {
+        await checkChannel(channel);
+        // Pequeña espera entre canales para no ser detectados
+        await new Promise(r => setTimeout(r, 2000));
+    }
     process.exit(0);
 })();
