@@ -6,67 +6,61 @@ async function sendTelegram(text) {
     const chatId = process.env.TELEGRAM_CHAT_ID;
     try {
         await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, {
-            chat_id: chatId, 
-            text: text, 
-            parse_mode: 'Markdown'
+            chat_id: chatId, text: text, parse_mode: 'Markdown'
         });
-    } catch (e) { console.log("Error enviando a Telegram"); }
+    } catch (e) { console.log("Error Telegram"); }
 }
 
 (async () => {
-    // 🎯 LISTA SOLO KICK
     const kickChannels = ["pauchikita", "roxanny", "sofipatatita"]; 
     
-    // Temporizador de seguridad: Si en 5 minutos no termina, se cierra solo
-    const globalTimeout = setTimeout(() => {
-        console.log("Tiempo límite excedido. Cerrando proceso para evitar bloqueo.");
-        process.exit(0);
-    }, 300000);
+    // Cerramos todo en 4 minutos máximo para que no se trabe
+    const globalTimeout = setTimeout(() => process.exit(0), 240000);
 
     const browser = await puppeteer.launch({ 
         headless: "new",
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'] 
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--window-size=1920,1080'] 
     });
     
     const page = await browser.newPage();
-    // User Agent de PC para cargar el código fuente completo
+    // Usamos un User Agent de una persona real en Windows 11
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
 
     for (const channel of kickChannels) {
         try {
-            console.log(`🔍 Escaneando Kick: ${channel}`);
+            console.log(`📡 Intentando cazar a: ${channel}`);
             
-            // Navegación rápida
-            await page.goto(`https://kick.com/${channel}`, { 
-                waitUntil: 'domcontentloaded', 
-                timeout: 30000 
-            });
+            // Usamos 'networkidle0' para que espere a que TODO cargue, pero con un tiempo límite menor
+            await page.goto(`https://kick.com/${channel}`, { waitUntil: 'networkidle0', timeout: 45000 });
 
-            // 🕒 ESPERA CLAVE: 15 segundos para que el script de Kick genere el link estático
-            await new Promise(r => setTimeout(r, 15000)); 
+            // Espera de 10 segundos extra para el renderizado del script
+            await new Promise(r => setTimeout(r, 10000)); 
 
-            const finalLink = await page.evaluate(() => {
+            const data = await page.evaluate(() => {
+                const body = document.body.innerText;
                 const html = document.documentElement.innerHTML;
-                // Buscamos el patrón master.m3u8 en el dominio stream.kick.com
-                const match = html.match(/https:\/\/stream\.kick\.com\/[^"']+\/master\.m3u8/i);
-                return match ? match[0] : null;
+                
+                // Buscamos el link estático que tú usas
+                const streamLink = html.match(/https:\/\/stream\.kick\.com\/[^"']+\/master\.m3u8/i);
+                
+                // Verificamos si realmente dice que está en vivo para no enviarte links viejos
+                const liveSignal = body.includes('LIVE') || body.includes('EN VIVO') || html.includes('vjs-live');
+                
+                return { link: streamLink ? streamLink[0] : null, isLive: liveSignal };
             });
 
-            if (finalLink) {
-                const cleanLink = finalLink.replace(/\\/g, '');
-                await sendTelegram(`🎯 **LINK MAESTRO: ${channel.toUpperCase()}**\n\n\`${cleanLink}\``);
-                console.log(`✅ Link capturado para ${channel}`);
+            if (data.link && data.isLive) {
+                const cleanLink = data.link.replace(/\\/g, '');
+                await sendTelegram(`🎯 **¡EN VIVO! ${channel.toUpperCase()}**\n\nLink Maestro:\n\`${cleanLink}\``);
             } else {
-                console.log(`❌ ${channel} no está en vivo o el link está oculto.`);
+                console.log(`${channel} está offline o protegido.`);
             }
 
         } catch (e) { 
-            console.log(`⚠️ Error en ${channel}: Probablemente tardó demasiado.`); 
+            console.log(`⚠️ Salto en ${channel} (Timeout)`); 
         }
     }
 
-    clearTimeout(globalTimeout);
     await browser.close();
-    console.log("🚀 Revisión de Kick terminada.");
-    process.exit(0); 
+    process.exit(0);
 })();
