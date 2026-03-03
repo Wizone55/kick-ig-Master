@@ -11,28 +11,25 @@ async function sendTelegram(text) {
 }
 
 async function checkChannel(channel) {
-    try {
-        console.log(`📡 Consultando: ${channel}`);
-        // Simulamos una petición de una App de Android/iPhone
-        const response = await axios.get(`https://kick.com/api/v1/channels/${channel}`, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-                'Accept': 'application/json'
-            },
-            timeout: 10000
-        });
+    // Usamos una URL de "CORS Proxy" para ocultar que somos GitHub
+    const proxyUrl = 'https://api.allorigins.win/get?url=';
+    const targetUrl = encodeURIComponent(`https://kick.com/api/v1/channels/${channel}`);
 
-        const data = response.data;
+    try {
+        console.log(`📡 Intentando vía Proxy: ${channel}`);
+        const response = await axios.get(`${proxyUrl}${targetUrl}`, { timeout: 15000 });
         
-        // Si está en vivo, Kick suele devolver el objeto 'playback_url'
+        // AllOrigins devuelve la respuesta dentro de un campo 'contents'
+        const data = JSON.parse(response.data.contents);
+        
         if (data.livestream && data.livestream.playback_url) {
             const link = data.livestream.playback_url;
-            await sendTelegram(`🎯 **¡EN VIVO! ${channel.toUpperCase()}**\n\nLink:\n\`${link}\``);
+            await sendTelegram(`🎯 **¡LO LOGRAMOS! ${channel.toUpperCase()}**\n\nLink:\n\`${link}\``);
         } else {
             console.log(`${channel} está offline.`);
         }
     } catch (e) {
-        console.log(`❌ Error en ${channel}: Probablemente bloqueo de IP.`);
+        console.log(`❌ El Proxy también fue bloqueado para ${channel}`);
     }
 }
 
@@ -40,8 +37,7 @@ async function checkChannel(channel) {
     const channels = ["sofipatatita", "pauchikita", "roxanny"];
     for (const channel of channels) {
         await checkChannel(channel);
-        // Pequeña espera entre canales para no ser detectados
-        await new Promise(r => setTimeout(r, 2000));
+        await new Promise(r => setTimeout(r, 3000));
     }
     process.exit(0);
 })();
